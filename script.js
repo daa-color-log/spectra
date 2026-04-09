@@ -212,30 +212,54 @@ const App = {
     },
 
     getEffectMessage(type, val) {
-        const ko = this.state.lang === 'ko';
+        const lang = this.state.lang;
         if (type === 'ISO') {
             const num = parseInt(val);
-            if (num <= 200) return ko ? `화질이 깨끗한 대신 어두워집니다` : `Clean image but darker`;
-            if (num >= 1600) return ko ? `노이즈가 끼는 대신 빛에 민감합니다` : `Adds noise but highly sensitive`;
-            return ko ? `적당한 화질과 감도입니다` : `Balanced noise and light`;
+            if (num <= 200) {
+                if (lang === 'ko') return `화질이 깨끗한 대신 어두워집니다`;
+                if (lang === 'ja') return `ノイズが少ないですが暗くなります`;
+                return `Clean image but darker`;
+            }
+            if (num >= 1600) {
+                if (lang === 'ko') return `노이즈가 끼는 대신 빛에 민감합니다`;
+                if (lang === 'ja') return `高感度ですがノイズが増えます`;
+                return `Adds noise but highly sensitive`;
+            }
+            return lang === 'ko' ? `적당한 화질과 감도입니다` : lang === 'ja' ? `標準的な画質と感度です` : `Balanced noise and light`;
         }
         if (type === 'SS') {
-            if (val === 'B') return ko ? `찰칵! 누른 만큼 개방합니다(장노출)` : `Shutter open while held`;
+            if (val === 'B') {
+                if (lang === 'ko') return `찰칵! 누른 만큼 개방합니다 (장노출)`;
+                if (lang === 'ja') return `押している間シャッターを開きます`;
+                return `Shutter open while held`;
+            }
             const isSeconds = val.includes('s');
             const num = isSeconds ? parseInt(val) : parseInt(val.split('/')[1]);
-            if (!isSeconds && num >= 500) return ko ? `피사체가 정지되는 대신 어두워집니다` : `Freezes motion but darker`;
-            if (isSeconds || (!isSeconds && num <= 60)) return ko ? `피사체가 흔들리고 밝아집니다` : `Motion blur and brighter`;
-            return ko ? `일상적인 셔터 속도입니다` : `Standard everyday speed`;
+            if (!isSeconds && num >= 500) {
+                if (lang === 'ko') return `피사체가 정지되는 대신 어두워집니다`;
+                if (lang === 'ja') return `被写体が止まりますが暗くなります`;
+                return `Freezes motion but darker`;
+            }
+            if (isSeconds || (!isSeconds && num <= 60)) {
+                if (lang === 'ko') return `피사체가 흔들리고 밝아집니다`;
+                if (lang === 'ja') return `ブレが生じますが明るくなります`;
+                return `Motion blur and brighter`;
+            }
+            return lang === 'ko' ? `일상적인 셔터 속도입니다` : lang === 'ja' ? `標準的なシャッター速度です` : `Standard everyday speed`;
         }
         if (type === 'A') {
             const num = parseFloat(val);
-            if (num <= 2.8) return ko ? `배경이 흐려지고 사진이 밝아집니다` : `Background blurs, photo brightens`;
-            if (num >= 8.0) return ko ? `배경까지 선명해지고 어두워집니다` : `Everything is sharp, but darker`;
-            return ko ? `적당한 배경흐림과 밝기입니다` : `Balanced depth of field`;
-        }
-        if (type === 'WB') {
-            // we handle WB somewhere else, or we can leave it
-            return val;
+            if (num <= 2.8) {
+                if (lang === 'ko') return `배경이 흐려지고 사진이 밝아집니다`;
+                if (lang === 'ja') return `背景がボケて明るくなります`;
+                return `Background blurs, photo brightens`;
+            }
+            if (num >= 8.0) {
+                if (lang === 'ko') return `배경까지 선명해지고 어두워집니다`;
+                if (lang === 'ja') return `背景までシャープですが暗くなります`;
+                return `Everything is sharp, but darker`;
+            }
+            return lang === 'ko' ? `적당한 배경흐림과 밝기입니다` : lang === 'ja' ? `標準的な被写界深度です` : `Balanced depth of field`;
         }
         return val;
     },
@@ -281,7 +305,10 @@ const App = {
             if (val !== 'AUTO') {
                 this.toast(`[${val}] ${this.getEffectMessage(type, val)}`);
             } else {
-                this.toast(`[${type} AUTO] 자동 계산 모드`);
+                let autoMsg = 'Auto Calculation';
+                if (this.state.lang === 'ko') autoMsg = '자동 노출 산출';
+                if (this.state.lang === 'ja') autoMsg = '自動露出算出';
+                this.toast(`[${type} AUTO] ${autoMsg}`);
             }
         };
 
@@ -480,7 +507,10 @@ const App = {
             if (this.state.ss === 'B') {
                 bulbStart = Date.now();
                 this.elements.video.style.opacity = '0';
-                this.toast("BULB EXPOSURE... (Hold)");
+                let msg = "BULB EXPOSURE... (Hold)";
+                if (this.state.lang === 'ko') msg = `장노출 기록중... (스위치 유지)`;
+                if (this.state.lang === 'ja') msg = `長時間露光中... (押し続けてください)`;
+                this.toast(msg);
                 return;
             }
             
@@ -495,7 +525,10 @@ const App = {
 
             halfPressTimer = setTimeout(() => {
                 this.state.isLocked = true; // Locks EV analysis loop
-                this.toast("🟢 AE/AF LOCKED");
+                let ael = "🟢 AE/AF LOCKED";
+                if (this.state.lang === 'ko') ael = "🟢 자동 노출/초점 고정(AE-L)";
+                if (this.state.lang === 'ja') ael = "🟢 露出/フォーカスロック完了";
+                this.toast(ael);
                 if (window.navigator.vibrate) window.navigator.vibrate([10, 20]);
             }, 500); 
         });
@@ -504,7 +537,10 @@ const App = {
             if (this.state.ss === 'B') {
                 this.elements.video.style.opacity = '1';
                 let sec = ((Date.now() - bulbStart) / 1000).toFixed(1);
-                this.toast(`📸 BULB SAVED (${sec}s)`);
+                let saved = `📸 BULB SAVED (${sec}s)`;
+                if (this.state.lang === 'ko') saved = `📸 셔터 오프. 장노출 저장됨 (${sec}초)`;
+                if (this.state.lang === 'ja') saved = `📸 写真を保存しました (${sec}秒)`;
+                this.toast(saved);
                 this.capturePhoto();
                 if (window.navigator.vibrate) window.navigator.vibrate([20, 20]);
                 return;
@@ -513,7 +549,11 @@ const App = {
             clearTimeout(halfPressTimer);
             this.state.isLocked = false; 
             
-            this.toast("📸 SNAP SAVED"); 
+            let snap = "📸 SNAP SAVED";
+            if (this.state.lang === 'ko') snap = "📸 촬영 성공! 갤러리 저장됨";
+            if (this.state.lang === 'ja') snap = "📸 写真の保存に成功しました";
+            this.toast(snap); 
+            
             this.capturePhoto();
             if (window.navigator.vibrate) window.navigator.vibrate(40); 
         });
