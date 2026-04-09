@@ -275,17 +275,24 @@ const App = {
     },
 
     setupDials() {
-        const update = (k, v) => { this.state[k] = v; this.calculateExposure(); };
-        const toastEnd = (type, v) => { if(v !== 'AUTO') this.toast(`[${v}] ${this.getEffectMessage(type, v)}`); else this.toast(`[${type} AUTO] 자동 계산 모드`); };
+        const updateInfo = (type, key, val) => { 
+            this.state[key] = val; 
+            this.calculateExposure(); 
+            if (val !== 'AUTO') {
+                this.toast(`[${val}] ${this.getEffectMessage(type, val)}`);
+            } else {
+                this.toast(`[${type} AUTO] 자동 계산 모드`);
+            }
+        };
 
         new ThumbDial('iso-wheel', ['AUTO','100','200','400','800','1600','3200','6400'], 
-            v => update('iso', v), v => toastEnd('ISO', v)
+            v => updateInfo('ISO', 'iso', v)
         );
         new ThumbDial('ss-wheel', ['AUTO','1/4000','1/2000','1/1000','1/500','1/250','1/125','1/60','1/30','1/15','1/8','1/4','1/2','1s','2s','4s','8s','15s','30s','B'], 
-            v => update('ss', v), v => toastEnd('SS', v)
+            v => updateInfo('SS', 'ss', v)
         );
         new ThumbDial('f-wheel', ['AUTO','1.4','1.8','2.0','2.8','4.0','5.6','8.0','11','16'], 
-            v => update('f', v), v => toastEnd('A', v)
+            v => updateInfo('A', 'f', v)
         );
     },
 
