@@ -1,0 +1,159 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+    <title>Spectra | Analogue Soul Light Meter</title>
+    <link rel="stylesheet" href="style.css">
+    <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;600&family=JetBrains+Mono:wght@400;700&display=swap" rel="stylesheet">
+</head>
+<body class="brass-theme">
+    <div id="app" class="app-container">
+        <!-- Top Navigation -->
+        <header class="top-nav">
+            <button class="icon-btn" id="help-btn">?</button>
+            <div id="toast-panel" class="toast-outer">
+                <div id="toast-inner" class="toast-content">SYSTEM READY</div>
+            </div>
+            <button class="icon-btn" id="lang-entry-btn">🌐</button>
+        </header>
+
+        <!-- Viewfinder (Live Feed) -->
+        <section class="viewfinder" id="viewport-zone">
+            <video id="camera-feed" autoplay playsinline muted></video>
+            
+            <!-- Grid & Level -->
+            <div class="grid-overlay">
+                <div class="grid-v v1"></div><div class="grid-v v2"></div>
+                <div class="grid-h h1"></div><div class="grid-h h2"></div>
+            </div>
+            <div class="horizon-level" id="spirit-level"></div>
+
+            <!-- Viewfinder OSD (Top Info Bar) -->
+            <div class="viewfinder-osd">
+                <div class="osd-item" id="osd-f">
+                    <span class="osd-label">A</span>
+                    <span class="osd-val" id="f-val-osd">1.8</span>
+                </div>
+                <div class="osd-item" id="osd-ss">
+                    <span class="osd-label">SS</span>
+                    <span class="osd-val" id="ss-val-osd">1/125</span>
+                </div>
+                <div class="osd-item" id="osd-iso">
+                    <span class="osd-label">ISO</span>
+                    <span class="osd-val" id="iso-val-osd">100</span>
+                </div>
+            </div>
+
+            <!-- Left Side: Color Temp (WB) Slider Overlay -->
+            <div id="wb-area" class="wb-control-edge">
+                <div id="wb-slider-bar" class="wb-bar-hidden">
+                    <div class="wb-label" id="wb-kelvin">5500K</div>
+                    <div class="wb-track"><div id="wb-thumb" class="wb-thumb"></div></div>
+                </div>
+            </div>
+
+            <!-- Right Edge Film Trigger Area -->
+            <div id="film-area" class="film-control-edge"></div>
+
+            <div class="viewfinder-overlays">
+                <!-- Circular Rotating Film Wheel (Radial on Right Edge) -->
+                <div class="film-dial-radial film-dial-hidden" id="film-dial">
+                    <div class="film-wheel-radial" id="film-internal-wheel">
+                        <div class="film-item active" data-filter="classic">CHROME</div>
+                        <div class="film-item" data-filter="vivid">VELVIA</div>
+                        <div class="film-item" data-filter="soft">ASTIA</div>
+                        <div class="film-item" data-filter="mono">ACROS</div>
+                        <div class="film-item" data-filter="provia">PROVIA</div>
+                    </div>
+                </div>
+
+                <!-- Exposure Meter -->
+                <div class="exposure-scale-container" id="meter-block">
+                    <div class="scale-labels">
+                        <span>-3</span><span>-2</span><span>-1</span><span class="perfect">0</span><span>1</span><span>2</span><span>3</span>
+                    </div>
+                    <div class="scale-axis">
+                        <div class="scale-ticks"></div>
+                        <div class="scale-needle" id="exposure-needle"></div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Organic Divider (Wave) -->
+            <div class="organic-divider">
+                <svg viewBox="0 0 500 40" preserveAspectRatio="none">
+                    <path d="M0,20 C150,40 350,0 500,20 L500,40 L0,40 Z" fill="#121212" />
+                </svg>
+            </div>
+        </section>
+
+        <!-- Control Room (Stacked Thumb-wheels) -->
+        <section class="control-room">
+            <div class="vertical-controls-stack">
+                <!-- ISO Dial -->
+                <div class="dial-block" id="iso-block">
+                    <div class="dial-header">ISO</div>
+                    <div class="wheel-outer thumb-wheel"><div class="wheel-inner" id="iso-wheel"></div><div class="dial-marker"></div></div>
+                </div>
+
+                <!-- Shutter Dial -->
+                <div class="dial-block" id="ss-block">
+                    <div class="dial-header">SHUTTER</div>
+                    <div class="wheel-outer thumb-wheel"><div class="wheel-inner" id="ss-wheel"></div><div class="dial-marker"></div></div>
+                </div>
+
+                <!-- Aperture Dial -->
+                <div class="dial-block" id="f-block">
+                    <div class="dial-header">APERTURE</div>
+                    <div class="wheel-outer thumb-wheel"><div class="wheel-inner" id="f-wheel"></div><div class="dial-marker"></div></div>
+                </div>
+            </div>
+
+            <!-- Centered Shutter Unit -->
+            <div class="shutter-center">
+                <div class="shutter-housing">
+                    <button id="shutter-btn" class="main-trigger"></button>
+                </div>
+                <div id="filter-display-name" class="active-filter-label">PROVIA / STANDARD</div>
+            </div>
+        </section>
+
+        <!-- Initial Language Modal -->
+        <div id="lang-modal" class="modal-overlay">
+            <div class="vintage-modal">
+                <h3>SELECT LANGUAGE</h3>
+                <div class="modal-btns">
+                    <button data-lang="en">ENGLISH</button>
+                    <button data-lang="ko">한국어</button>
+                    <button data-lang="ja">日本語</button>
+                </div>
+            </div>
+        </div>
+
+        <!-- Onboarding Spotlight Overlay (Full Screen) -->
+        <div id="onboarding-overlay" class="overlay-hidden">
+            <svg class="spotlight-svg">
+                <defs>
+                    <mask id="spotlight-mask">
+                        <rect width="100%" height="100%" fill="white" />
+                        <rect id="spotlight-shape" x="0" y="0" width="0" height="0" rx="16" fill="black" transition="all 0.3s" style="transition: all 0.3s" />
+                    </mask>
+                </defs>
+                <rect width="100%" height="100%" fill="rgba(0,0,0,0.85)" mask="url(#spotlight-mask)" />
+            </svg>
+            <div id="guide-card" class="guide-card">
+                <p id="guide-text"></p>
+                <div class="guide-nav">
+                    <button id="guide-prev">PREV</button>
+                    <button id="guide-next">NEXT</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Data & Implementation -->
+    <script src="translations.js"></script>
+    <script src="script.js"></script>
+</body>
+</html>
