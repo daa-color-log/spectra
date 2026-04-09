@@ -19,8 +19,11 @@ body { background-color: #000; color: #FFF; font-family: 'Outfit', sans-serif; h
 /* --- Top Navigation --- */
 .top-nav { display: flex; justify-content: space-between; align-items: center; padding: 10px 15px; height: 60px; background: var(--matte-black); position: relative; z-index: 100; border-bottom: 1px solid rgba(150, 111, 51, 0.2); }
 .icon-btn { background: #000; border: 1px solid var(--brass); color: var(--brass); width: 38px; height: 38px; border-radius: 6px; font-weight: bold; }
-.toast-outer { flex: 1; margin: 0 15px; height: 34px; background: #000; border: 1px solid rgba(150, 111, 51, 0.4); border-radius: 17px; display: flex; justify-content: center; align-items: center; }
-.toast-content { font-family: 'JetBrains Mono', monospace; font-size: 0.7rem; color: var(--neon-cyan); letter-spacing: 2px; }
+/* Toast Notification */
+.toast-bar { position: absolute; top: 105px; left: 0; width: 100%; display: flex; justify-content: center; z-index: 100; pointer-events: none; opacity: 0; transition: opacity 0.3s; }
+.toast-bar.visible { opacity: 1; }
+.toast-outer { flex: 1; margin: 0 15px; height: 34px; background: #000; border: 1px solid rgba(150, 111, 51, 0.4); border-radius: 17px; display: flex; justify-content: center; align-items: center; padding: 0 10px; }
+.toast-content { font-family: 'JetBrains Mono', monospace; font-size: 0.65rem; color: var(--neon-cyan); letter-spacing: 0.5px; text-align: center; line-height: 1.2; }
 
 /* --- Viewfinder --- */
 .viewfinder { flex: 1.8; position: relative; background: #000; overflow: hidden; }
@@ -61,6 +64,12 @@ body { background-color: #000; color: #FFF; font-family: 'Outfit', sans-serif; h
     position: absolute; inset: 0; pointer-events: none; z-index: 5;
     background-image: url('data:image/svg+xml;utf8,%3Csvg viewBox="0 0 200 200" xmlns="http://www.w3.org/2000/svg"%3E%3Cfilter id="n"%3E%3CfeTurbulence type="fractalNoise" baseFrequency="0.85" numOctaves="3" stitchTiles="stitch"/%3E%3C/filter%3E%3Crect width="100%25" height="100%25" filter="url(%23n)"/%3E%3C/svg%3E');
     opacity: 0; mix-blend-mode: overlay; transition: opacity 0.2s;
+}
+
+/* Optical Filter (WB) */
+.glass-filter {
+    position: absolute; inset: 0; pointer-events: none; z-index: 4;
+    mix-blend-mode: soft-light; transition: background-color 0.1s;
 }
 
 /* Radial Film Dial (Right) */

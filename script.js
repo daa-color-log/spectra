@@ -173,7 +173,7 @@ const App = {
         lang: 'en',
         iso: 'AUTO', ss: 'AUTO', f: 'AUTO',
         ev: 8,
-        filter: 'provia',
+        filter: 'std',
         wb: 50, // 0-100 => 2000K - 10000K
         isLocked: false,
         onboardingStep: 0
@@ -215,28 +215,27 @@ const App = {
         const ko = this.state.lang === 'ko';
         if (type === 'ISO') {
             const num = parseInt(val);
-            if (num <= 200) return ko ? `${val} (최고 화질)` : `${val} (Highest Quality)`;
-            if (num >= 3200) return ko ? `${val} (노이즈 증가)` : `${val} (Increased Noise)`;
-            return val;
+            if (num <= 200) return ko ? `화질이 깨끗한 대신 어두워집니다` : `Clean image but darker`;
+            if (num >= 1600) return ko ? `노이즈가 끼는 대신 빛에 민감합니다` : `Adds noise but highly sensitive`;
+            return ko ? `적당한 화질과 감도입니다` : `Balanced noise and light`;
         }
         if (type === 'SS') {
-            if (val === 'B') return ko ? `벌브 (무한개방)` : `Bulb (Hold Shutter)`;
+            if (val === 'B') return ko ? `찰칵! 누른 만큼 개방합니다(장노출)` : `Shutter open while held`;
             const isSeconds = val.includes('s');
             const num = isSeconds ? parseInt(val) : parseInt(val.split('/')[1]);
-            if (!isSeconds && num >= 500) return ko ? `${val} (모션 프리즈)` : `${val} (Freeze Motion)`;
-            if (isSeconds || (!isSeconds && num <= 60)) return ko ? `${val} (모션 블러)` : `${val} (Motion Blur)`;
-            return val;
+            if (!isSeconds && num >= 500) return ko ? `피사체가 정지되는 대신 어두워집니다` : `Freezes motion but darker`;
+            if (isSeconds || (!isSeconds && num <= 60)) return ko ? `피사체가 흔들리고 밝아집니다` : `Motion blur and brighter`;
+            return ko ? `일상적인 셔터 속도입니다` : `Standard everyday speed`;
         }
         if (type === 'A') {
             const num = parseFloat(val);
-            if (num <= 2.8) return ko ? `F${val} (아웃포커싱/밝음)` : `F${val} (Bokeh/Bright)`;
-            if (num >= 8.0) return ko ? `F${val} (팬포커스/어두움)` : `F${val} (Deep Focus/Dark)`;
-            return `F${val}`;
+            if (num <= 2.8) return ko ? `배경이 흐려지고 사진이 밝아집니다` : `Background blurs, photo brightens`;
+            if (num >= 8.0) return ko ? `배경까지 선명해지고 어두워집니다` : `Everything is sharp, but darker`;
+            return ko ? `적당한 배경흐림과 밝기입니다` : `Balanced depth of field`;
         }
         if (type === 'WB') {
-            if (val >= 6500) return ko ? `${val}K (따뜻한 톤)` : `${val}K (Warm Tone)`;
-            if (val <= 4000) return ko ? `${val}K (차가운 톤)` : `${val}K (Cool Tone)`;
-            return ko ? `${val}K (주광)` : `${val}K (Daylight)`;
+            // we handle WB somewhere else, or we can leave it
+            return val;
         }
         return val;
     },
@@ -277,7 +276,7 @@ const App = {
 
     setupDials() {
         const update = (k, v) => { this.state[k] = v; this.calculateExposure(); };
-        const toastEnd = (type, v) => { if(v !== 'AUTO') this.toast(`${type} ${this.getEffectMessage(type, v)}`); else this.toast(`${type} AUTO`); };
+        const toastEnd = (type, v) => { if(v !== 'AUTO') this.toast(`[${v}] ${this.getEffectMessage(type, v)}`); else this.toast(`[${type} AUTO] 자동 계산 모드`); };
 
         new ThumbDial('iso-wheel', ['AUTO','100','200','400','800','1600','3200','6400'], 
             v => update('iso', v), v => toastEnd('ISO', v)
@@ -363,10 +362,14 @@ const App = {
                 video: { 
                     facingMode: 'environment',
                     width: { ideal: 1920 },
-                    height: { ideal: 1080 },
-                    focusMode: "continuous" 
+                    height: { ideal: 1080 }
                 } 
             });
+            const track = stream.getVideoTracks()[0];
+            if (track && track.applyConstraints) {
+                // Force continuous autofocus if supported
+                track.applyConstraints({ advanced: [{ focusMode: "continuous" }] }).catch(()=>{});
+            }
             this.elements.video.srcObject = stream;
             this.startAnalysis();
         } catch (e) { this.toast("CAMERA ERROR"); }
@@ -476,6 +479,13 @@ const App = {
             
             // Half-press AE/AF Lock simulation
             this.state.isLocked = false;
+            
+            // Poke camera hardware to trigger physical refocus
+            try {
+                const track = this.elements.video.srcObject.getVideoTracks()[0];
+                if (track && track.applyConstraints) track.applyConstraints({ advanced: [{ focusMode: "continuous" }] }).catch(()=>{});
+            } catch(ex) {}
+
             halfPressTimer = setTimeout(() => {
                 this.state.isLocked = true; // Locks EV analysis loop
                 this.toast("🟢 AE/AF LOCKED");
@@ -513,6 +523,16 @@ const App = {
         ctx.filter = this.elements.video.style.filter;
         ctx.drawImage(this.elements.video, 0, 0, canvas.width, canvas.height);
         
+        // Physical WB Optical Filter logic mapped perfectly to JPG data
+        if (this.state.wbColor && this.state.wbColor.a > 0) {
+            ctx.filter = 'none';
+            ctx.globalCompositeOperation = 'soft-light';
+            const c = this.state.wbColor;
+            ctx.fillStyle = `rgba(${c.r}, ${c.g}, ${c.b}, ${c.a})`;
+            ctx.fillRect(0, 0, canvas.width, canvas.height);
+            ctx.globalCompositeOperation = 'source-over';
+        }
+        
         // Add Vintage EXIF Watermark
         ctx.filter = 'none';
         ctx.fillStyle = 'rgba(0,0,0,0.6)';
@@ -541,20 +561,24 @@ const App = {
         if (f === 'classic') line = `brightness(${1.05 * simBright}) contrast(1.1) saturate(0.8) sepia(0.2)`;
         else if (f === 'vivid') line = `brightness(${1.0 * simBright}) saturate(1.6) contrast(1.2)`;
         else if (f === 'soft') line = `brightness(${1.1 * simBright}) contrast(0.9) saturate(0.9)`;
-        else if (f === 'mono') line = `brightness(${1.0 * simBright}) grayscale(1) contrast(1.3)`;
-        else line = `brightness(${1.0 * simBright}) contrast(1.05) saturate(1.1)`;
+        else if (f === 'mono') line = `brightness(${1.0 * simBright}) grayscale(1.0) contrast(1.3)`;
+        else line = `brightness(${1.0 * simBright}) contrast(1.05) saturate(1.1)`; // STD
         
-        // WB Simulation
-        let wbFilter = "";
+        // Optical Physical Tint Simulation (prevents hue corruption)
+        let r=0, g=0, b=0, a=0;
         if (this.state.wb > 50) {
-            let s = (this.state.wb - 50) / 100;
-            wbFilter = `sepia(${s}) hue-rotate(-20deg)`;
+            r=255; g=130; b=0; // Amber temp filter
+            a = ((this.state.wb - 50) / 100) * 0.55;
         } else if (this.state.wb < 50) {
-            let s = (50 - this.state.wb) / 100;
-            wbFilter = `sepia(${s}) hue-rotate(180deg)`;
+            r=0; g=130; b=255; // Blue temp filter
+            a = ((50 - this.state.wb) / 100) * 0.55;
         }
         
-        v.style.filter = `${line} ${wbFilter}`;
+        this.state.wbColor = {r, g, b, a};
+        const glass = document.getElementById('glass-filter');
+        if (glass) glass.style.backgroundColor = `rgba(${r},${g},${b},${a})`;
+        
+        v.style.filter = line;
         
         // 2. High ISO Visual Noise Simulation
         const noiseEl = document.getElementById('sensor-noise');
