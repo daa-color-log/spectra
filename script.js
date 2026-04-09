@@ -220,8 +220,9 @@ const App = {
             return val;
         }
         if (type === 'SS') {
+            if (val === 'B') return ko ? `벌브 (무한개방)` : `Bulb (Hold Shutter)`;
             const isSeconds = val.includes('s');
-            const num = isSeconds ? 1 : parseInt(val.split('/')[1]);
+            const num = isSeconds ? parseInt(val) : parseInt(val.split('/')[1]);
             if (!isSeconds && num >= 500) return ko ? `${val} (모션 프리즈)` : `${val} (Freeze Motion)`;
             if (isSeconds || (!isSeconds && num <= 60)) return ko ? `${val} (모션 블러)` : `${val} (Motion Blur)`;
             return val;
@@ -281,7 +282,7 @@ const App = {
         new ThumbDial('iso-wheel', ['AUTO','100','200','400','800','1600','3200','6400'], 
             v => update('iso', v), v => toastEnd('ISO', v)
         );
-        new ThumbDial('ss-wheel', ['AUTO','1/4000','1/2000','1/1000','1/500','1/250','1/125','1/60','1/30','1s','2s'], 
+        new ThumbDial('ss-wheel', ['AUTO','1/4000','1/2000','1/1000','1/500','1/250','1/125','1/60','1/30','1s','2s','4s','8s','10s','B'], 
             v => update('ss', v), v => toastEnd('SS', v)
         );
         new ThumbDial('f-wheel', ['AUTO','1.4','1.8','2.0','2.8','4.0','5.6','8.0','11','16'], 
@@ -403,7 +404,12 @@ const App = {
     calculateExposure() {
         let N = this.state.f === 'AUTO' ? null : parseFloat(this.state.f);
         let tStr = this.state.ss;
-        let t = tStr === 'AUTO' ? null : (tStr.includes('/') ? 1 / parseInt(tStr.split('/')[1]) : parseInt(tStr));
+        let t = null;
+        if (tStr !== 'AUTO') {
+            if (tStr === 'B') t = 30; // Treat Bulb as 30s base for live meter
+            else if (tStr.includes('s')) t = parseInt(tStr);
+            else t = 1 / parseInt(tStr.split('/')[1]);
+        }
         let iso = this.state.iso === 'AUTO' ? null : parseInt(this.state.iso);
 
         // Program Mode logic (fallback sequence)
@@ -454,40 +460,45 @@ const App = {
     },
 
     setupShutter() {
-        let longPressTimer;
-        let isBulb = false;
+        let halfPressTimer;
+        let bulbStart = 0;
         
         this.elements.shutter.addEventListener('touchstart', (e) => { 
             e.preventDefault(); 
-            this.state.isLocked = true; 
-            if (window.navigator.vibrate) window.navigator.vibrate(20);
+            if (window.navigator.vibrate) window.navigator.vibrate(15);
             
-            // Bulb mode interaction
-            longPressTimer = setTimeout(() => {
-                isBulb = true;
+            if (this.state.ss === 'B') {
+                bulbStart = Date.now();
                 this.elements.video.style.opacity = '0';
-                this.toast("BULB MODE (Shutter Open)");
-                if (window.navigator.vibrate) window.navigator.vibrate([10, 30, 10]);
-            }, 800);
+                this.toast("BULB EXPOSURE... (Hold)");
+                return;
+            }
+            
+            // Half-press AE/AF Lock simulation
+            this.state.isLocked = false;
+            halfPressTimer = setTimeout(() => {
+                this.state.isLocked = true; // Locks EV analysis loop
+                this.toast("🟢 AE/AF LOCKED");
+                if (window.navigator.vibrate) window.navigator.vibrate([10, 20]);
+            }, 500); 
         });
         
         this.elements.shutter.addEventListener('touchend', () => { 
-            clearTimeout(longPressTimer);
-            if (this.state.isLocked) { 
-                this.state.isLocked = false; 
+            if (this.state.ss === 'B') {
                 this.elements.video.style.opacity = '1';
-                
+                let sec = ((Date.now() - bulbStart) / 1000).toFixed(1);
+                this.toast(`📸 BULB SAVED (${sec}s)`);
                 this.capturePhoto();
-
-                if (isBulb) {
-                    this.toast("BULB EXPOSURE SAVED");
-                    isBulb = false;
-                } else {
-                    this.toast("📸 SNAP SAVED"); 
-                }
-                
-                if (window.navigator.vibrate) window.navigator.vibrate(40); 
-            } 
+                if (window.navigator.vibrate) window.navigator.vibrate([20, 20]);
+                return;
+            }
+            
+            clearTimeout(halfPressTimer);
+            this.state.isLocked = false; 
+            
+            this.toast("📸 SNAP SAVED"); 
+            this.capturePhoto();
+            if (window.navigator.vibrate) window.navigator.vibrate(40); 
         });
     },
 
