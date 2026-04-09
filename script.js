@@ -96,7 +96,7 @@ class RadialFilmWheel {
         this.wheel = document.getElementById(wheelId);
         this.onChange = onChange;
         this.items = Array.from(this.wheel.children);
-        this.anglePerItem = 22; 
+        this.anglePerItem = 35; // Widened spacing
         this.currentRotation = 0;
         this.startY = 0;
         this.isDragging = false;
@@ -134,7 +134,8 @@ class RadialFilmWheel {
         if (!this.isDragging) return;
         e.preventDefault();
         const y = e.touches ? e.touches[0].pageY : e.pageY;
-        const delta = (y - this.startY) * 0.45; 
+        // Flipped delta to match standard physical scroll direction
+        const delta = (this.startY - y) * 0.45; 
         this.currentRotation = this.startRotation + delta;
         this.updateWheel();
         
@@ -326,15 +327,45 @@ const App = {
         window.addEventListener('touchend', end);
     },
 
+    // --- Hardware Sensors ---
     setupOrientation() {
         window.addEventListener('deviceorientation', e => {
-            if (e.gamma) this.elements.level.style.transform = `rotate(${-e.gamma}deg)`;
+            if (e.gamma === null) return;
+            let tilt = -e.gamma; // default portrait
+            const angle = (screen.orientation || {}).angle || window.orientation || 0;
+            
+            if (angle === 90) tilt = -e.beta;
+            else if (angle === -90 || angle === 270) tilt = e.beta;
+            else if (angle === 180) tilt = e.gamma;
+            
+            if (this.targetTilt === undefined) this.currentTilt = tilt;
+            this.targetTilt = tilt;
         });
+
+        // Smooth rotation using rAF
+        const smoothLevel = () => {
+            if (this.currentTilt !== undefined && this.targetTilt !== undefined) {
+                // Lerp formula
+                this.currentTilt = this.currentTilt * 0.85 + this.targetTilt * 0.15;
+                if (this.elements.level) {
+                    this.elements.level.style.transform = `rotate(${this.currentTilt}deg)`;
+                }
+            }
+            requestAnimationFrame(smoothLevel);
+        };
+        smoothLevel();
     },
 
     async setupCamera() {
         try {
-            const stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'environment' } });
+            const stream = await navigator.mediaDevices.getUserMedia({ 
+                video: { 
+                    facingMode: 'environment',
+                    width: { ideal: 1920 },
+                    height: { ideal: 1080 },
+                    focusMode: "continuous" 
+                } 
+            });
             this.elements.video.srcObject = stream;
             this.startAnalysis();
         } catch (e) { this.toast("CAMERA ERROR"); }
@@ -349,9 +380,19 @@ const App = {
                 ctx.drawImage(this.elements.video, 0, 0, 100, 100);
                 const data = ctx.getImageData(0, 0, 100, 100).data;
                 let b = 0;
-                for (let i = 0; i < data.length; i += 4) b += (0.299*data[i] + 0.587*data[i+1] + 0.114*data[i+2]);
-                b /= 10000;
-                this.state.ev = (Math.log2(b + 1) * 2).toFixed(1);
+                let pixels = 0;
+                // Check every 4th pixel for speed
+                for (let i = 0; i < data.length; i += 16) {
+                    b += (0.299*data[i] + 0.587*data[i+1] + 0.114*data[i+2]);
+                    pixels++;
+                }
+                const avgLuma = b / pixels; // 0 to 255
+                
+                // Smartphone cameras auto-expose natively to avgLuma ~ 127
+                // This means typical indoor lighting yields luma 127.
+                // We linearly map this to absolute EV (Luma 0 => EV 1, Luma 255 => EV 16)
+                // Result: Indoors (Luma~127) => EV 8.5, which is physically accurate.
+                this.state.ev = ((avgLuma / 255) * 15 + 1).toFixed(1);
                 this.calculateExposure();
             }
             requestAnimationFrame(loop);
@@ -401,25 +442,117 @@ const App = {
 
         const currentEV = Math.log2((dynamicF * dynamicF) / dynamicSS) - Math.log2(dynamicISO / 100);
         const diff = ev - currentEV;
+        
+        // Store for real-time visual simulation
+        this.state.dynamicISO = dynamicISO;
+        this.state.exposureDiff = diff;
+        
         const percentage = Math.max(0, Math.min(100, 50 + (diff * 16.66)));
         if (this.elements.needle) this.elements.needle.style.left = percentage + '%';
+        
+        this.applyEffects();
     },
 
     setupShutter() {
-        this.elements.shutter.addEventListener('touchstart', (e) => { e.preventDefault(); this.state.isLocked = true; });
-        this.elements.shutter.addEventListener('touchend', () => { if (this.state.isLocked) { this.toast("📸 SNAP SAVED"); this.state.isLocked = false; if (window.navigator.vibrate) window.navigator.vibrate(50); } });
+        let longPressTimer;
+        let isBulb = false;
+        
+        this.elements.shutter.addEventListener('touchstart', (e) => { 
+            e.preventDefault(); 
+            this.state.isLocked = true; 
+            if (window.navigator.vibrate) window.navigator.vibrate(20);
+            
+            // Bulb mode interaction
+            longPressTimer = setTimeout(() => {
+                isBulb = true;
+                this.elements.video.style.opacity = '0';
+                this.toast("BULB MODE (Shutter Open)");
+                if (window.navigator.vibrate) window.navigator.vibrate([10, 30, 10]);
+            }, 800);
+        });
+        
+        this.elements.shutter.addEventListener('touchend', () => { 
+            clearTimeout(longPressTimer);
+            if (this.state.isLocked) { 
+                this.state.isLocked = false; 
+                this.elements.video.style.opacity = '1';
+                
+                this.capturePhoto();
+
+                if (isBulb) {
+                    this.toast("BULB EXPOSURE SAVED");
+                    isBulb = false;
+                } else {
+                    this.toast("📸 SNAP SAVED"); 
+                }
+                
+                if (window.navigator.vibrate) window.navigator.vibrate(40); 
+            } 
+        });
+    },
+
+    capturePhoto() {
+        if (!this.elements.video.videoWidth) return;
+        const canvas = document.createElement('canvas');
+        canvas.width = this.elements.video.videoWidth;
+        canvas.height = this.elements.video.videoHeight;
+        const ctx = canvas.getContext('2d');
+        
+        // Copy exact CSS visual filters for the final JPG!
+        ctx.filter = this.elements.video.style.filter;
+        ctx.drawImage(this.elements.video, 0, 0, canvas.width, canvas.height);
+        
+        // Add Vintage EXIF Watermark
+        ctx.filter = 'none';
+        ctx.fillStyle = 'rgba(0,0,0,0.6)';
+        ctx.fillRect(canvas.width - 600, canvas.height - 80, 600, 80);
+        ctx.fillStyle = '#FFD700';
+        ctx.font = 'bold 26px monospace';
+        const stamp = `SPECTRA [${this.state.filter.toUpperCase()}] | ISO ${this.state.iso} | SS ${this.state.ss} | F${this.state.f}`;
+        ctx.fillText(stamp, canvas.width - 570, canvas.height - 30);
+        
+        // Trigger download
+        const link = document.createElement('a');
+        link.download = `spectra_snap_${Date.now()}.jpg`;
+        link.href = canvas.toDataURL('image/jpeg', 0.95);
+        link.click();
     },
 
     applyEffects() {
         const v = this.elements.video;
         const f = this.state.filter;
-        const h = (this.state.wb - 50) * 0.5;
+        
+        // 1. Exposure Physics Simulation
+        const diff = this.state.exposureDiff || 0;
+        const simBright = Math.max(0.08, Math.min(4.0, Math.pow(2, diff))); // Simulates actual shutter/aperture physics
+        
         let line = "";
-        if (f === 'classic') line = "brightness(1.05) contrast(1.1) saturate(0.8) sepia(0.1)";
-        else if (f === 'vivid') line = "saturate(1.8) contrast(1.1)";
-        else if (f === 'mono') line = "grayscale(1) contrast(1.3)";
-        else line = "contrast(1.05) saturate(1.1)";
-        v.style.filter = `${line} hue-rotate(${h}deg)`;
+        if (f === 'classic') line = `brightness(${1.05 * simBright}) contrast(1.1) saturate(0.8) sepia(0.2)`;
+        else if (f === 'vivid') line = `brightness(${1.0 * simBright}) saturate(1.6) contrast(1.2)`;
+        else if (f === 'soft') line = `brightness(${1.1 * simBright}) contrast(0.9) saturate(0.9)`;
+        else if (f === 'mono') line = `brightness(${1.0 * simBright}) grayscale(1) contrast(1.3)`;
+        else line = `brightness(${1.0 * simBright}) contrast(1.05) saturate(1.1)`;
+        
+        // WB Simulation
+        let wbFilter = "";
+        if (this.state.wb > 50) {
+            let s = (this.state.wb - 50) / 100;
+            wbFilter = `sepia(${s}) hue-rotate(-20deg)`;
+        } else if (this.state.wb < 50) {
+            let s = (50 - this.state.wb) / 100;
+            wbFilter = `sepia(${s}) hue-rotate(180deg)`;
+        }
+        
+        v.style.filter = `${line} ${wbFilter}`;
+        
+        // 2. High ISO Visual Noise Simulation
+        const noiseEl = document.getElementById('sensor-noise');
+        if (noiseEl && this.state.dynamicISO) {
+            let iso = this.state.dynamicISO;
+            let noiseOp = 0;
+            if (iso > 400) noiseOp = (iso - 400) / 6000 * 0.65;
+            noiseEl.style.opacity = Math.max(0, Math.min(0.85, noiseOp));
+        }
     },
 
     toast(msg) { this.elements.toast.innerText = msg; },
